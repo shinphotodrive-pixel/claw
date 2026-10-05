@@ -1,0 +1,6 @@
+{
+  "name": "2026 자율형 AI 에이전트 인텔리전스: 메타 뮤즈 & 오픈클로",
+  "description": "2026년 차세대 자율형 AI 에이전트 메타 뮤즈(Meta Muse)와 오픈클로(OpenClaw)의 아키텍처, 영구 기억, 보안 위협 및 배포 가이드라인 비교 분석 대시보드",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
