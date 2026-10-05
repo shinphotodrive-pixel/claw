@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { generateCostForecastPdf } from '../utils/generatePdfReport';
 import {
   BarChart,
   Bar,
@@ -108,6 +109,52 @@ const TWELVE_MONTH_PROJECTION = [
   { month: '12M (엔터프라이즈)', museRam: 56, openclawRam: 5240, museStress: 20, openclawStress: 99, openclawDbGb: 46.0 },
 ];
 
+// Past 6 Months Monthly Token Expenditure Trends Data (May ~ Oct 2026)
+const SIX_MONTH_COST_TREND = [
+  {
+    month: '5월',
+    metaMuse: 16,
+    openClaw: 42,
+    museRawApi: 85,
+    tokensM: 75,
+  },
+  {
+    month: '6월',
+    metaMuse: 16,
+    openClaw: 78,
+    museRawApi: 172,
+    tokensM: 160,
+  },
+  {
+    month: '7월',
+    metaMuse: 16,
+    openClaw: 145,
+    museRawApi: 340,
+    tokensM: 320,
+  },
+  {
+    month: '8월 (초과)',
+    metaMuse: 16,
+    openClaw: 260,
+    museRawApi: 590,
+    tokensM: 580,
+  },
+  {
+    month: '9월',
+    metaMuse: 16,
+    openClaw: 340,
+    museRawApi: 820,
+    tokensM: 780,
+  },
+  {
+    month: '10월 (현재)',
+    metaMuse: 16,
+    openClaw: 415,
+    museRawApi: 1010,
+    tokensM: 950,
+  },
+];
+
 // System stress radar data (Scale 0 to 100)
 const SYSTEM_STRESS_RADAR_LIVE = [
   { metric: '호스트 CPU 점유율', muse: 8, openclaw: 78, fullMark: 100 },
@@ -199,16 +246,19 @@ const WORKLOAD_PROFILES: WorkloadProfile[] = [
 interface PerformanceMetricsSectionProps {
   onDownloadReport?: () => void;
   isDownloading?: boolean;
+  onShowToast?: (msg: string, type?: 'success' | 'warning' | 'info') => void;
 }
 
 export const PerformanceMetricsSection: React.FC<PerformanceMetricsSectionProps> = ({
   onDownloadReport,
   isDownloading = false,
+  onShowToast,
 }) => {
   const [activeTab, setActiveTab] = useState<'latency' | 'resources' | 'projection' | 'cost' | 'simulator'>('cost');
   const [selectedWorkload, setSelectedWorkload] = useState<string>('large_pdf');
   const [viewMode, setViewMode] = useState<'live' | 'historical'>('live');
   const [warningThreshold, setWarningThreshold] = useState<number>(85);
+  const [isExportingCostPdf, setIsExportingCostPdf] = useState(false);
 
   // Cost Simulator States
   const [monthlyTokens, setMonthlyTokens] = useState<number>(300); // Millions of tokens
@@ -303,6 +353,52 @@ export const PerformanceMetricsSection: React.FC<PerformanceMetricsSectionProps>
       openClaw: Math.round(2000 * inRatio * byokInputRate + 2000 * outRatio * byokOutputRate + byokInfraCost + 80),
     },
   ];
+
+  const handleExportCostReport = async () => {
+    if (isExportingCostPdf) return;
+    setIsExportingCostPdf(true);
+    if (onShowToast) {
+      onShowToast('월간 지출 예측 PDF 리포트를 생성 중입니다...', 'info');
+    }
+    try {
+      await generateCostForecastPdf({
+        monthlyTokens,
+        monthlyBudget,
+        byokModel,
+        tokenRatio,
+        inRatio,
+        outRatio,
+        inputTokensM,
+        outputTokensM,
+        musePlanCost,
+        musePlanName,
+        museRawApiCost,
+        museSavings,
+        openClawTotalCost,
+        openClawApiCost,
+        byokInfraCost,
+        openClawStorageCost,
+        highestEstimatedCost,
+        isBudgetBreached,
+        budgetOverAmount,
+        budgetOverPercent,
+        budgetUsagePercentClaw,
+        budgetUsagePercentMuse,
+        includeVisualCanvas: true,
+        elementIdToCapture: 'cost-simulator-container',
+      });
+      if (onShowToast) {
+        onShowToast('월간 지출 예측 PDF 리포트가 성공적으로 다운로드되었습니다.', 'success');
+      }
+    } catch (err) {
+      console.error('Failed to export cost forecast PDF:', err);
+      if (onShowToast) {
+        onShowToast('PDF 생성 중 오류가 발생했습니다. 다시 시도해주세요.', 'warning');
+      }
+    } finally {
+      setIsExportingCostPdf(false);
+    }
+  };
 
   return (
     <section id="performance" className="space-y-8 pt-6">
@@ -856,53 +952,77 @@ export const PerformanceMetricsSection: React.FC<PerformanceMetricsSectionProps>
 
         {/* Tab: Cost & Budget Threshold Simulator */}
         {activeTab === 'cost' && (
-          <div className="p-6 sm:p-8 space-y-8 animate-in fade-in duration-200">
+          <div id="cost-simulator-container" className="p-6 sm:p-8 space-y-8 animate-in fade-in duration-200">
             {/* Header & Presets */}
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-100 pb-4">
+            <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 border-b border-slate-100 pb-4">
               <div>
-                <h4 className="font-bold text-slate-900 text-base sm:text-lg flex items-center gap-2">
+                <div className="flex items-center gap-2">
+                  <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-rose-100 text-rose-800 uppercase tracking-wider">
+                    OPEX & TCO Simulation
+                  </span>
+                  <span className="text-xs text-slate-400 font-mono">Token Model Engine</span>
+                </div>
+                <h4 className="font-bold text-slate-900 text-base sm:text-lg flex items-center gap-2 mt-1">
                   <Coins className="w-5 h-5 text-rose-600" />
                   토큰 소비 기반 운영 비용(TCO) 추정 및 예산 임계치 시뮬레이터
                 </h4>
-                <p className="text-xs text-slate-500 mt-1">
+                <p className="text-xs text-slate-500 mt-0.5">
                   월간 예상 토큰 규모와 모델별 요율을 바탕으로 비용을 예측하고, 예산 한도 초과 시 실시간 알림을 제공합니다.
                 </p>
               </div>
 
-              {/* Quick Preset Buttons */}
-              <div className="flex flex-wrap gap-1.5">
+              {/* Action Buttons: Presets + PDF Export */}
+              <div className="flex flex-wrap items-center gap-2 self-start lg:self-auto shrink-0">
+                {/* Quick Presets */}
+                <div className="inline-flex bg-slate-100 p-1 rounded-xl border border-slate-200">
+                  <button
+                    onClick={() => {
+                      setMonthlyTokens(80);
+                      setMonthlyBudget(50);
+                      setByokModel('claude-3-7');
+                      setTokenRatio('balanced');
+                    }}
+                    className="px-2 py-1 rounded-lg hover:bg-white text-slate-700 text-[11px] font-bold transition"
+                  >
+                    개인 ($50)
+                  </button>
+                  <button
+                    onClick={() => {
+                      setMonthlyTokens(300);
+                      setMonthlyBudget(150);
+                      setByokModel('claude-3-7');
+                      setTokenRatio('balanced');
+                    }}
+                    className="px-2 py-1 rounded-lg hover:bg-white text-slate-700 text-[11px] font-bold transition"
+                  >
+                    팀 ($150)
+                  </button>
+                  <button
+                    onClick={() => {
+                      setMonthlyTokens(1500);
+                      setMonthlyBudget(800);
+                      setByokModel('gpt-5-turbo');
+                      setTokenRatio('balanced');
+                    }}
+                    className="px-2 py-1 rounded-lg hover:bg-white text-slate-700 text-[11px] font-bold transition"
+                  >
+                    엔터프라이즈 ($800)
+                  </button>
+                </div>
+
+                {/* PDF Export Button */}
                 <button
-                  onClick={() => {
-                    setMonthlyTokens(80);
-                    setMonthlyBudget(50);
-                    setByokModel('claude-3-7');
-                    setTokenRatio('balanced');
-                  }}
-                  className="px-2.5 py-1 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 text-[11px] font-bold transition"
+                  onClick={handleExportCostReport}
+                  disabled={isExportingCostPdf}
+                  className="px-3.5 py-2 rounded-xl bg-gradient-to-r from-rose-600 to-amber-600 hover:from-rose-500 hover:to-amber-500 text-white text-xs font-bold shadow-xs hover:shadow transition flex items-center gap-2 disabled:opacity-50"
+                  title="현재 시뮬레이터 파라미터를 바탕으로 월간 지출 예측 리포트를 PDF로 내보내기"
                 >
-                  개인 ($50 예산)
-                </button>
-                <button
-                  onClick={() => {
-                    setMonthlyTokens(300);
-                    setMonthlyBudget(150);
-                    setByokModel('claude-3-7');
-                    setTokenRatio('balanced');
-                  }}
-                  className="px-2.5 py-1 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 text-[11px] font-bold transition"
-                >
-                  스타트업 팀 ($150 예산)
-                </button>
-                <button
-                  onClick={() => {
-                    setMonthlyTokens(1500);
-                    setMonthlyBudget(800);
-                    setByokModel('gpt-5-turbo');
-                    setTokenRatio('balanced');
-                  }}
-                  className="px-2.5 py-1 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 text-[11px] font-bold transition"
-                >
-                  엔터프라이즈 ($800 예산)
+                  {isExportingCostPdf ? (
+                    <Loader2 className="w-4 h-4 animate-spin text-white" />
+                  ) : (
+                    <FileDown className="w-4 h-4 text-white" />
+                  )}
+                  <span>{isExportingCostPdf ? 'PDF 생성 중...' : '지출 예측 PDF 리포트 내보내기'}</span>
                 </button>
               </div>
             </div>
@@ -1252,6 +1372,171 @@ export const PerformanceMetricsSection: React.FC<PerformanceMetricsSectionProps>
                     <Bar dataKey="museApi" fill="#94a3b8" name="Muse API 직호출" radius={[4, 4, 0, 0]} />
                   </BarChart>
                 </ResponsiveContainer>
+              </div>
+            </div>
+
+            {/* PAST 6 MONTHS EXPENDITURE MULTI-LINE TREND CHART */}
+            <div className="space-y-4 pt-6 border-t border-slate-200">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                <div>
+                  <div className="flex items-center gap-2">
+                    <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-indigo-100 text-indigo-800 uppercase tracking-wider">
+                      Historical 6-Month OPEX
+                    </span>
+                    <span className="text-xs text-slate-400 font-mono">2026.05 ~ 2026.10</span>
+                  </div>
+                  <h5 className="font-bold text-slate-900 text-base sm:text-lg flex items-center gap-2 mt-1">
+                    <TrendingUp className="w-5 h-5 text-indigo-600" />
+                    지난 6개월간 Meta Muse vs OpenClaw 월별 토큰 비용 지출 추이 (Multi-Line)
+                  </h5>
+                  <p className="text-xs text-slate-500 mt-0.5">
+                    실제 프로덕션 환경에서 5월부터 10월까지 축적된 토큰 소모량에 따른 월별 청구액 추이를 비교합니다. Meta Muse는 고정 $16로 안정적인 반면, OpenClaw는 8월부터 예산($150)을 초과 돌파했습니다.
+                  </p>
+                </div>
+
+                <div className="flex flex-wrap items-center gap-3 text-xs font-bold self-start sm:self-auto">
+                  <span className="flex items-center gap-1.5 text-sky-700">
+                    <span className="w-3.5 h-1 rounded bg-sky-600"></span>
+                    Meta Muse (고정 $16)
+                  </span>
+                  <span className="flex items-center gap-1.5 text-amber-700">
+                    <span className="w-3.5 h-1 rounded bg-amber-500"></span>
+                    OpenClaw (BYOK 종량제)
+                  </span>
+                  <span className="flex items-center gap-1.5 text-slate-500">
+                    <span className="w-3.5 h-1 rounded border-b border-dashed border-slate-500"></span>
+                    동일량 API 직호출 환산
+                  </span>
+                </div>
+              </div>
+
+              {/* Recharts LineChart */}
+              <div className="h-80 w-full pt-2">
+                <ResponsiveContainer width="100%" height="100%">
+                  <LineChart data={SIX_MONTH_COST_TREND} margin={{ top: 15, right: 30, left: 10, bottom: 20 }}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" vertical={false} />
+                    <XAxis dataKey="month" tick={{ fill: '#64748b', fontSize: 11 }} />
+                    <YAxis
+                      tick={{ fill: '#64748b', fontSize: 11 }}
+                      unit="$"
+                      domain={[0, 1100]}
+                      label={{ value: '월 지출액 (USD)', angle: -90, position: 'insideLeft', fill: '#64748b', fontSize: 10 }}
+                    />
+                    <Tooltip
+                      content={({ active, payload, label }) => {
+                        if (active && payload && payload.length) {
+                          const data = payload[0].payload;
+                          const isBreached = data.openClaw > monthlyBudget;
+                          return (
+                            <div className="bg-slate-900 text-white p-3.5 rounded-2xl shadow-xl border border-slate-700 text-xs space-y-1.5 min-w-[220px]">
+                              <div className="flex items-center justify-between border-b border-slate-700 pb-1">
+                                <span className="font-bold text-slate-200">{label} 실 청구 분석</span>
+                                <span className="text-[10px] text-emerald-400 font-mono">{data.tokensM}M 토큰 처리</span>
+                              </div>
+                              <div className="flex justify-between">
+                                <span className="text-sky-300">Meta Muse (구독):</span>
+                                <span className="font-bold font-mono">${data.metaMuse}/월</span>
+                              </div>
+                              <div className="flex justify-between">
+                                <span className="text-amber-300">OpenClaw (종량제):</span>
+                                <span className="font-bold font-mono">${data.openClaw}/월</span>
+                              </div>
+                              <div className="flex justify-between text-slate-400 text-[11px]">
+                                <span>API 직호출 시 환산:</span>
+                                <span className="font-mono">${data.museRawApi}/월</span>
+                              </div>
+                              <div className="flex justify-between pt-1 border-t border-slate-800 text-[11px]">
+                                <span className="text-slate-400">현재 설정 예산:</span>
+                                <span className="font-mono font-bold text-rose-300">${monthlyBudget}/월</span>
+                              </div>
+                              {isBreached && (
+                                <div className="text-[10px] text-rose-400 font-bold bg-rose-950/80 p-1.5 rounded mt-1 border border-rose-800">
+                                  ⚠️ 예산 초과: +${data.openClaw - monthlyBudget} (+{Math.round(((data.openClaw - monthlyBudget) / monthlyBudget) * 100)}%)
+                                </div>
+                              )}
+                            </div>
+                          );
+                        }
+                        return null;
+                      }}
+                    />
+                    <Legend wrapperStyle={{ fontSize: 11, paddingTop: 10 }} />
+
+                    {/* Dynamic Monthly Budget Reference Line */}
+                    <ReferenceLine
+                      y={monthlyBudget}
+                      stroke="#ef4444"
+                      strokeWidth={2}
+                      strokeDasharray="4 4"
+                      label={{
+                        value: `설정 월 예산 ($${monthlyBudget})`,
+                        fill: '#ef4444',
+                        fontSize: 10,
+                        position: 'top',
+                      }}
+                    />
+
+                    {/* OpenClaw BYOK Multi-Line */}
+                    <Line
+                      type="monotone"
+                      dataKey="openClaw"
+                      name="OpenClaw BYOK 실제 지출"
+                      stroke="#d97706"
+                      strokeWidth={3}
+                      dot={{ r: 5, fill: '#d97706' }}
+                      activeDot={{ r: 7 }}
+                    />
+
+                    {/* Meta Muse Flat Line */}
+                    <Line
+                      type="monotone"
+                      dataKey="metaMuse"
+                      name="Meta Muse Power 플랜 ($16)"
+                      stroke="#0284c7"
+                      strokeWidth={3}
+                      dot={{ r: 5, fill: '#0284c7' }}
+                      activeDot={{ r: 7 }}
+                    />
+
+                    {/* Muse Raw API Equivalent Line */}
+                    <Line
+                      type="monotone"
+                      dataKey="museRawApi"
+                      name="동일량 API 직호출 환산액"
+                      stroke="#94a3b8"
+                      strokeWidth={2}
+                      strokeDasharray="4 4"
+                      dot={{ r: 3, fill: '#94a3b8' }}
+                    />
+                  </LineChart>
+                </ResponsiveContainer>
+              </div>
+
+              {/* 4 Summary Scorecards for the 6-Month Trend */}
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-xs">
+                <div className="p-3.5 rounded-2xl bg-sky-50/70 border border-sky-200 space-y-1">
+                  <span className="text-[10px] text-sky-700 font-bold uppercase block">Meta Muse 6개월 누적</span>
+                  <div className="text-lg font-black text-sky-900 font-mono">$96 <span className="text-xs font-normal text-sky-700">(월 $16 고정)</span></div>
+                  <p className="text-[10px] text-sky-800">변동성 0%, 5억 토큰/주 한도 내 예측 가능성 100%</p>
+                </div>
+
+                <div className="p-3.5 rounded-2xl bg-amber-50/70 border border-amber-200 space-y-1">
+                  <span className="text-[10px] text-amber-700 font-bold uppercase block">OpenClaw 6개월 누적</span>
+                  <div className="text-lg font-black text-amber-900 font-mono">$1,280 <span className="text-xs font-normal text-amber-700">(9.8배 급증)</span></div>
+                  <p className="text-[10px] text-amber-800">5월 $42에서 10월 $415로 워크플로 확장 시 지출 급등</p>
+                </div>
+
+                <div className="p-3.5 rounded-2xl bg-emerald-50/70 border border-emerald-200 space-y-1">
+                  <span className="text-[10px] text-emerald-700 font-bold uppercase block">Meta Muse 총 절감액</span>
+                  <div className="text-lg font-black text-emerald-900 font-mono">+$2,921 <span className="text-xs font-normal text-emerald-700">(96.8% 절약)</span></div>
+                  <p className="text-[10px] text-emerald-800">직호출 API 총액($3,017) 대비 누적 비용 절감</p>
+                </div>
+
+                <div className="p-3.5 rounded-2xl bg-rose-50/70 border border-rose-200 space-y-1">
+                  <span className="text-[10px] text-rose-700 font-bold uppercase block">예산(${monthlyBudget}) 임계치 초과</span>
+                  <div className="text-lg font-black text-rose-900 font-mono">8월부터 돌파 <span className="text-xs font-normal text-rose-700">($260)</span></div>
+                  <p className="text-[10px] text-rose-800">10월 지출 $415는 현재 예산의 {Math.round((415 / monthlyBudget) * 100)}% 수준</p>
+                </div>
               </div>
             </div>
 

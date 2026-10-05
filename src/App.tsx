@@ -92,6 +92,7 @@ export default function App() {
         <PerformanceMetricsSection
           onDownloadReport={handleDownloadReport}
           isDownloading={isGeneratingPdf}
+          onShowToast={addToast}
         />
         <SecurityMatrixSection onShowToast={addToast} />
         <SetupGuideSection onShowToast={addToast} />
